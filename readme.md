@@ -11,7 +11,7 @@ This tutorial will guide you through deploying a Flask web application using CI/
 + Step 6: Deployment Orchestration (Optional)
 + Step 7: Integrate Security Practices
 
-### Prerequisites
+## Prerequisites
 * Basic understanding of Python and Flask.
 * AWS account setup.
 * Jenkins installed and running.

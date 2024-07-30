@@ -1,0 +1,122 @@
+- name: Set up Flask application server
+  hosts: all
+  become: yes
+  vars:
+    flask_app_dir: /var/www/flask_app
+    git_repo_url: https://github.com/feramin108/Flask_project.git
+  tasks:
+    - name: Update and upgrade apt packages
+      apt:
+        update_cache: yes
+        upgrade: dist
+
+    - name: Install necessary packages
+      apt:
+        name:
+          - python3
+          - python3-pip
+          - git
+          - nginx
+        state: present
+
+    - name: Ensure Flask application directory exists
+      file:
+        path: "{{ flask_app_dir }}"
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: '0755'
+
+    - name: Configure Git to trust the Flask app directory
+      command: git config --global --add safe.directory {{ flask_app_dir }}
+
+    - name: Clone Flask repository
+      git:
+        repo: "{{ git_repo_url }}"
+        dest: "{{ flask_app_dir }}"
+        version: main
+        accept_hostkey: yes
+
+    - name: List contents of the cloned repository
+      command: ls -R {{ flask_app_dir }}
+      register: cloned_repo_contents
+
+    - name: Print cloned repository contents
+      debug:
+        var: cloned_repo_contents.stdout_lines
+
+    - name: Install Python dependencies from all .txt and .in files
+      pip:
+        requirements: "{{ item }}"
+      with_fileglob:
+        - "{{ flask_app_dir }}/requirements/*.txt"
+        - "{{ flask_app_dir }}/requirements/*.in"
+      ignore_errors: yes
+
+    - name: Create systemd service file for Flask app
+      copy:
+        dest: /etc/systemd/system/flask_app.service
+        content: |
+          [Unit]
+          Description=Gunicorn instance to serve Flask App
+          After=network.target
+
+          [Service]
+          User=www-data
+          Group=www-data
+          WorkingDirectory={{ flask_app_dir }}
+          Environment="PATH=/usr/bin"
+          ExecStart=/usr/local/bin/gunicorn --workers 3 --bind unix:flask_app.sock -m 007 wsgi:app
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Start and enable Flask app service
+      systemd:
+        name: flask_app
+        state: started
+        enabled: true
+
+    - name: Remove default Nginx site configuration
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+
+    - name: Ensure nginx sites-available directory exists
+      file:
+        path: /etc/nginx/sites-available
+        state: directory
+
+    - name: Copy Nginx site configuration
+      copy:
+        dest: /etc/nginx/sites-available/flask_app
+        content: |
+          server {
+              listen 80;
+              server_name _;
+
+              location / {
+                  proxy_pass http://unix:/var/www/flask_app/flask_app.sock;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }
+          }
+
+    - name: Ensure nginx sites-enabled directory exists
+      file:
+        path: /etc/nginx/sites-enabled
+        state: directory
+
+    - name: Enable Nginx site configuration
+      file:
+        src: /etc/nginx/sites-available/flask_app
+        dest: /etc/nginx/sites-enabled/flask_app
+        state: link
+        force: yes
+
+    - name: Restart Nginx
+      systemd:
+        name: nginx
+        state: restarted

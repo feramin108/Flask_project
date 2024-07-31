@@ -7,7 +7,14 @@ terraform {
   }
 }
 
-# Configure the AWS Provider
 provider "aws" {
+  alias  = "default"
   region = "us-west-2"
 }
+
+provider "aws" {
+  alias  = "another_region"
+  region = "us-east-1"
+}
+
+

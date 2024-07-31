@@ -1,5 +1,3 @@
-# variables.tf
-
 # Define the AWS region as a variable
 variable "aws_region" {
   description = "The AWS region to deploy resources in"
